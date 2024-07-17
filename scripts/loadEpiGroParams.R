@@ -10,9 +10,9 @@ loadEpiGroParams <- function(path = "./") {
   
   
   params_out <- data[early_state_rows, ] |>
-    select(betas = beta_opt, 
+    select(betas  = beta_opt, 
            gammas = gamma_opt,
-           Ns = N_opt)
+           Ns     = N_opt)
   
   return(params_out)
 }

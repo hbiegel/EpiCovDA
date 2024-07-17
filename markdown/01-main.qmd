@@ -1,23 +1,53 @@
 ---
-title: "Add Title"
+title: "EpiCovDA"
 author: "Hannah Biegel"
-date: "July 2024"
+date: "July 17, 2024"
+format:
+  html:
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc-location: left
 ---
 
 
 ```{r}
 #| label: setup
+#| include: false
 library(tidyverse)
 library(zoo)
+library(patchwork)
+
 source("../scripts/makeForecast.R")
 source("../scripts/loadAndSmoothData.R")
 source("../scripts/loadEpiGroParams.R")
 source("../scripts/SIRICC_VDA.R")
+
+path     <- getwd()
 ```
 
 
+# Example of Model Fit and Prediction
+
 ```{r}
-path <- getwd()
+#| label: single-pred-example
+#| warning: false
+#| dpi: 800
+
+ex1 <- makeForecast(historical_window = 30, path = paste0(path,"/../"))
+ex2 <- makeForecast(historical_window = 14, path = paste0(path,"/../"))
+
+(ex1$plt + labs(subtitle = "Fitting 30 days")) + 
+(ex2$plt + labs(subtitle = "Fitting 14 days")) +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+```
+
+
+
+```{r}
+#| label: run-ensemble
+#| eval: false
+#| 
 baseline <- makeForecast(historical_window = 50, path = paste0(path,"/../"))
 set.seed(202)
 seed.list <- sample(10^5, 200)
@@ -35,92 +65,99 @@ res <- map(1:50, .f = function(j){
 #         "../output/AZ_06-03-2020_ens_all_hist.rds")
 ```
 
-```{r}
-saved_results <- readRDS("../output/AZ_06-03-2020_ens.rds")
-res <- saved_results$res
-baseline <- saved_results$baseline
 
-plt <- ggplot(res |>
-                filter(!is.na(pred))) +
-  geom_line(mapping = aes(x = date, y = pred, group = iter, color = "prediction"), color = "pink") +
+# Example ensemble forecasts
+
+## Using most recent 14 days
+
+```{r}
+#| label: plot-example
+#| warning: false
+#| dpi: 800
+saved_results <- readRDS("../output/AZ_06-03-2020_ens.rds")
+res           <- saved_results$res |>
+  filter(!is.na(pred))
+baseline      <- saved_results$baseline
+mean_pred <- res |> group_by(date) |>
+  summarize(pred = mean(pred))
+plt <- ggplot(res) +
+  geom_line(mapping = aes(x = date, y = pred, group = iter, color = "Ensemble Member"), linewidth = 1) +
+  geom_line(data = mean_pred, mapping = aes(x = date, y = pred, color = "Mean Prediction"), linewidth = 1.5) +
   geom_line(baseline$dat |>
                filter(date <= baseline$forecast_date + 30), 
-            mapping = aes(x = date, y = smoothedIncidence, color = "smoothed data"), linewidth = 1,
-            col = "black")+
+            mapping = aes(x = date, y = smoothedIncidence, color = "Time-Averaged Data"), linewidth = 1)+
   geom_line(baseline$dat |>
                filter(date <= baseline$forecast_date + 30), 
-             mapping = aes(x = date, y = positiveIncrease), color = "black")  +
+             mapping = aes(x = date, y = positiveIncrease, color = "Raw Data"))  +
   geom_point(baseline$dat |>
-               filter(status %in% c("available","historical")), 
-             mapping = aes(x = date, y = smoothedIncidence, color = status)) +
+               filter(status %in% c("available")), 
+             mapping = aes(x = date, y = positiveIncrease, color = "Used for Fitting")) +
+  scale_color_manual(values = c("Ensemble Member" = "pink",
+                                "Mean Prediction" = "deeppink2",
+                                "Time-Averaged Data" = "black",
+                                "Raw Data" = "black",
+                                "Used for Fitting" = "deepskyblue3"))+
   theme_bw() +
+  theme(legend.position = "top") +
+  labs(x = "Date", y = "Incident Cases", color = element_blank()) + 
   lims(y = c(0,10000))
 
 plt
 ```
 
 
+## Using 50 days of historical data
 
 ```{r}
-#| label: specify-settings
-data.files <- list.files("../data/")
-states <- data.files[which(grepl(".csv", data.files))] |>
-  gsub(pattern = "state_", replacement = "") |>
-  gsub(pattern = ".csv", replacement = "")
+#| label: plot-example-full-hist
+#| warning: false
+#| dpi: 800
+saved_results_all_hist <- readRDS("../output/AZ_06-03-2020_ens_all_hist.rds")
+res_all_hist          <- saved_results_all_hist$res |>
+  filter(!is.na(pred))
+baseline_all_hist      <- saved_results_all_hist$baseline
+mean_pred_all_hist <- res_all_hist |> group_by(date) |>
+  summarize(pred = mean(pred))
+plt_all_hist <- ggplot(res_all_hist) +
+  geom_line(mapping = aes(x = date, y = pred, group = iter, color = "Ensemble Member"), linewidth = 1) +
+  geom_line(data = mean_pred_all_hist, mapping = aes(x = date, y = pred, color = "Mean Prediction"), linewidth = 1.5) +
+  geom_line(baseline_all_hist$dat |>
+               filter(date <= baseline$forecast_date + 30), 
+            mapping = aes(x = date, y = smoothedIncidence, color = "Time-Averaged Data"), linewidth = 1)+
+  geom_line(baseline_all_hist$dat |>
+               filter(date <= baseline$forecast_date + 30), 
+             mapping = aes(x = date, y = positiveIncrease, color = "Raw Data"))  +
+  geom_point(baseline_all_hist$dat |>
+               filter(status %in% c("available")), 
+             mapping = aes(x = date, y = positiveIncrease, color = "Used for Fitting")) +
+  scale_color_manual(values = c("Ensemble Member" = "pink",
+                                "Mean Prediction" = "deeppink2",
+                                "Time-Averaged Data" = "black",
+                                "Raw Data" = "black",
+                                "Used for Fitting" = "blue"))+
+  theme_bw() +
+  theme(legend.position = "top") +
+  labs(x = "Date", y = "Incident Cases", color = element_blank()) + 
+  lims(y = c(0,10000))
 
-K_choices          <- 7 # number of observations to fit forecasts
-n_samps            <- 10 # ensemble members per choice of K
-state_C0s          <- read.csv("../param_data/state_C0s.csv") # initial cases for ICC
-num_forecast_days  <- 30 # number of days to forecast ahead
-forecast_dates     <- (as.Date("05-01-2020",format = "%m-%d-%Y") + seq(0, 28, 7)) |>
-  format("%m-%d-%Y") # dates to create forecasts from
-forecast_locations <- states # locations to forecast
+plt_all_hist
 ```
 
-
+# Setup for additional example
 
 ```{r}
-map(forecast_locations[1], .f = function(state_abbr){
-  map(forecast_dates[1], .f = function(dt){
-    state_forecasts <- makeForecast(state_abbr        = state_abbr,
-                                    forecast_date     = dt,
-                                    forecast_window   = num_forecast_days,
-                                    historical_window = K_choices)
-  })
-})
+#| label: additional-example
+#| warning: false
+#| dpi: 800
+
+new_ex <- makeForecast(state_abbr        = "CT", 
+                       forecast_date     = "11-15-2020", 
+                       forecast_window   = 30, 
+                       historical_window = 14, 
+                       r.seed            = 101,
+                       path = paste0(path,"/../"))
 
 
-for state_num = state_numS  %19,25
-
-state_id = state_list{state_num};
-num_days =3;
-
-
-% 
-% all_forecast_dates = {'2020-04-12','2020-04-19','2020-04-26',...
-%                       '2020-05-03','2020-05-10','2020-05-17',...
-%                       '2020-05-24','2020-05-31','2020-06-07',...
-%                       '2020-06-14','2020-06-21','2020-06-28',...
-%                       '2020-07-05'};
-% 
-% all_forecast_dates = {'2020-04-12','2020-04-19','2020-04-26',...
-%                       '2020-05-03','2020-05-10','2020-05-17',...
-%                       '2020-05-24','2020-05-31','2020-06-07',...
-%                       '2020-06-14','2020-06-21','2020-06-28',...
-%                       '2020-07-05','2020-07-12','2020-07-19',...
-%                       '2020-07-26','2020-08-02','2020-08-09',...
-%                       '2020-08-16','2020-08-23','2020-08-30',...
-%                       '2020-09-06','2020-09-13'};
-
-
-% all_forecast_dates = {'2020-04-10','2020-04-17','2020-04-24',...
-%                       '2020-05-01','2020-05-08','2020-05-15',...
-%                       '2020-05-22','2020-05-29','2020-06-05',...
-%                       '2020-06-12','2020-06-19','2020-06-26',...
-%                       '2020-07-03'};
-
-                                     
-
-
+new_ex$plt
 ```
 
