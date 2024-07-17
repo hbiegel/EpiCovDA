@@ -1,0 +1,126 @@
+---
+title: "Add Title"
+author: "Hannah Biegel"
+date: "July 2024"
+---
+
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(zoo)
+source("../scripts/makeForecast.R")
+source("../scripts/loadAndSmoothData.R")
+source("../scripts/loadEpiGroParams.R")
+source("../scripts/SIRICC_VDA.R")
+```
+
+
+```{r}
+path <- getwd()
+baseline <- makeForecast(historical_window = 50, path = paste0(path,"/../"))
+set.seed(202)
+seed.list <- sample(10^5, 200)
+res <- map(1:50, .f = function(j){
+  fcast <- makeForecast(historical_window = 50,
+                        r.seed = seed.list[j],
+                        path = paste0(path,"/../"))$dat 
+  data.frame(date = fcast$date,
+             pred = fcast$predictedIncidence,
+             iter = j)
+}) |> bind_rows()
+
+# saveRDS(list(baseline = baseline,
+#              res = res),
+#         "../output/AZ_06-03-2020_ens_all_hist.rds")
+```
+
+```{r}
+saved_results <- readRDS("../output/AZ_06-03-2020_ens.rds")
+res <- saved_results$res
+baseline <- saved_results$baseline
+
+plt <- ggplot(res |>
+                filter(!is.na(pred))) +
+  geom_line(mapping = aes(x = date, y = pred, group = iter, color = "prediction"), color = "pink") +
+  geom_line(baseline$dat |>
+               filter(date <= baseline$forecast_date + 30), 
+            mapping = aes(x = date, y = smoothedIncidence, color = "smoothed data"), linewidth = 1,
+            col = "black")+
+  geom_line(baseline$dat |>
+               filter(date <= baseline$forecast_date + 30), 
+             mapping = aes(x = date, y = positiveIncrease), color = "black")  +
+  geom_point(baseline$dat |>
+               filter(status %in% c("available","historical")), 
+             mapping = aes(x = date, y = smoothedIncidence, color = status)) +
+  theme_bw() +
+  lims(y = c(0,10000))
+
+plt
+```
+
+
+
+```{r}
+#| label: specify-settings
+data.files <- list.files("../data/")
+states <- data.files[which(grepl(".csv", data.files))] |>
+  gsub(pattern = "state_", replacement = "") |>
+  gsub(pattern = ".csv", replacement = "")
+
+K_choices          <- 7 # number of observations to fit forecasts
+n_samps            <- 10 # ensemble members per choice of K
+state_C0s          <- read.csv("../param_data/state_C0s.csv") # initial cases for ICC
+num_forecast_days  <- 30 # number of days to forecast ahead
+forecast_dates     <- (as.Date("05-01-2020",format = "%m-%d-%Y") + seq(0, 28, 7)) |>
+  format("%m-%d-%Y") # dates to create forecasts from
+forecast_locations <- states # locations to forecast
+```
+
+
+
+```{r}
+map(forecast_locations[1], .f = function(state_abbr){
+  map(forecast_dates[1], .f = function(dt){
+    state_forecasts <- makeForecast(state_abbr        = state_abbr,
+                                    forecast_date     = dt,
+                                    forecast_window   = num_forecast_days,
+                                    historical_window = K_choices)
+  })
+})
+
+
+for state_num = state_numS  %19,25
+
+state_id = state_list{state_num};
+num_days =3;
+
+
+% 
+% all_forecast_dates = {'2020-04-12','2020-04-19','2020-04-26',...
+%                       '2020-05-03','2020-05-10','2020-05-17',...
+%                       '2020-05-24','2020-05-31','2020-06-07',...
+%                       '2020-06-14','2020-06-21','2020-06-28',...
+%                       '2020-07-05'};
+% 
+% all_forecast_dates = {'2020-04-12','2020-04-19','2020-04-26',...
+%                       '2020-05-03','2020-05-10','2020-05-17',...
+%                       '2020-05-24','2020-05-31','2020-06-07',...
+%                       '2020-06-14','2020-06-21','2020-06-28',...
+%                       '2020-07-05','2020-07-12','2020-07-19',...
+%                       '2020-07-26','2020-08-02','2020-08-09',...
+%                       '2020-08-16','2020-08-23','2020-08-30',...
+%                       '2020-09-06','2020-09-13'};
+
+
+% all_forecast_dates = {'2020-04-10','2020-04-17','2020-04-24',...
+%                       '2020-05-01','2020-05-08','2020-05-15',...
+%                       '2020-05-22','2020-05-29','2020-06-05',...
+%                       '2020-06-12','2020-06-19','2020-06-26',...
+%                       '2020-07-03'};
+
+                                     
+
+
+```
+
