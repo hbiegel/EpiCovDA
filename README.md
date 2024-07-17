@@ -1,2 +1,2 @@
 # EpiCovDA
-EpiCovDA framework
+EpiCovDA framework implemented in R.
